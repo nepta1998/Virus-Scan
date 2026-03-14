@@ -26,15 +26,14 @@ func NewVirusTotalService() (*VirusTotalService, error) {
 	return &VirusTotalService{client}, nil
 }
 
-func (s *VirusTotalService) ScanFile(file *os.File, params map[string]string) (string, chan float32, error) {
-	ch := make(chan float32)
-	scanner := s.client.NewFileScanner()
-	scan, err := scanner.ScanFileWithParameters(file, ch, params)
-	if err != nil {
-		return "", nil, err
-	}
-	analysisID := scan.ID()
-	return analysisID, ch, nil
+func (s *VirusTotalService) ScanFile(file *os.File, progress chan <- float32, params map[string]string) (string, error) {
+    scanner := s.client.NewFileScanner()
+    scan, err := scanner.ScanFileWithParameters(file, progress, params)
+    close(progress)
+    if err != nil {
+      return "", err
+    }
+    return scan.ID(), nil
 }
 
 func (s *VirusTotalService) ScanURL(url string) (string, error) {
@@ -43,8 +42,7 @@ func (s *VirusTotalService) ScanURL(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	analysisID := scan.ID()
-	return analysisID, nil
+	return scan.ID(), nil
 }
 
 func (s *VirusTotalService) GetAnalysis(analysisID string) (*vt.Object, error) {
