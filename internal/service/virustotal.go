@@ -26,14 +26,14 @@ func NewVirusTotalService() (*VirusTotalService, error) {
 	return &VirusTotalService{client}, nil
 }
 
-func (s *VirusTotalService) ScanFile(file *os.File, progress chan <- float32, params map[string]string) (string, error) {
-    scanner := s.client.NewFileScanner()
-    scan, err := scanner.ScanFileWithParameters(file, progress, params)
-    close(progress)
-    if err != nil {
-      return "", err
-    }
-    return scan.ID(), nil
+func (s *VirusTotalService) ScanFile(file *os.File, progress chan<- float32, params map[string]string) (string, error) {
+	scanner := s.client.NewFileScanner()
+	scan, err := scanner.ScanFileWithParameters(file, progress, params)
+	close(progress)
+	if err != nil {
+		return "", err
+	}
+	return scan.ID(), nil
 }
 
 func (s *VirusTotalService) ScanURL(url string) (string, error) {
