@@ -139,7 +139,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// 1. Calculamos el porcentaje (debe ser entre 0.0 y 1.0)
 			pct := float64(msg)
 			m.status = fmt.Sprintf("Escaneando... %.0f%%", pct*100)
-			// m.progress.SetPercent(pct)
 			var cmdProgress tea.Cmd
 			cmdProgress = m.progress.SetPercent(pct)
 			return m, cmdProgress
