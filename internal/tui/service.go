@@ -32,7 +32,7 @@ func ScanFileCmd(file *os.File, p *tea.Program) tea.Cmd {
 		go func() {
 			for pct := range progressChan {
 				// p ya no es nil porque lo validamos arriba
-				p.Send(models.VTProgress(pct/100))
+				p.Send(models.VTProgress(min(pct, 100)/100))
 			}
 		}()
 

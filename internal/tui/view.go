@@ -76,6 +76,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 		m.filepicker.SetHeight(msg.Height - v - 4)
 		m.progress.SetWidth(msg.Width - h - 4)
+		return m, nil
 	}
 
 	// --- LÓGICA POR MODO ---
@@ -124,11 +125,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, ScanFileCmd(file, m.p)
 		}
 	case modeScanning:
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modePicker
+				return m, nil
+			}
+		}
 		switch msg := msg.(type) {
 		case models.VTProgress:
-			var cmd tea.Cmd
-			m.progress, cmd = m.progress.Update(float64(msg))
-			return m, cmd
+			// 1. Calculamos el porcentaje (debe ser entre 0.0 y 1.0)
+			pct := float64(msg)
+			m.status = fmt.Sprintf("Escaneando... %.0f%%", pct*100)
+			// m.progress.SetPercent(pct)
+			var cmdProgress tea.Cmd
+			cmdProgress = m.progress.SetPercent(pct)
+			return m, cmdProgress
+		case progress.FrameMsg:
+			var cmdFrame tea.Cmd
+			m.progress, cmdFrame = m.progress.Update(msg)
+			return m, cmdFrame
 		case models.VTResult:
 			if msg.Err != nil {
 				m.status = "Error: " + msg.Err.Error()
@@ -174,10 +192,12 @@ func NewModel() model {
 	fp := filepicker.New()
 	userHome, _ := os.UserHomeDir()
 	fp.CurrentDirectory = userHome
+	pg := progress.New(progress.WithDefaultBlend())
 	return model{
 		mode:       modeList,
 		list:       list,
 		filepicker: fp,
+		progress:   pg,
 	}
 }
 
