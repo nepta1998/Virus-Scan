@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -35,6 +36,7 @@ const (
 	modeList mode = iota
 	modePicker
 	modeScanning
+	modeResult
 )
 
 type model struct {
@@ -44,10 +46,9 @@ type model struct {
 	selectedFile string
 	progress     progress.Model
 	status       string
-	err          error
 	p            *tea.Program
-	// quitting     bool
-	// err          error
+	table        table.Model
+	analysisID   string
 }
 
 // type clearErrorMsg struct{}
@@ -151,8 +152,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "Error: " + msg.Err.Error()
 				return m, nil
 			}
+			m.analysisID = msg.ID
 			m.status = fmt.Sprintf("¡ÉXITO! ID Recibido: %s", msg.ID)
+			m.mode = modeResult
 			return m, nil
+		}
+	case modeResult:
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc", "q":
+				m.mode = modePicker
+				return m, nil
+			case "enter":
+				return m, tea.Batch(
+					tea.Printf("Let's go to %s! %s", m.table.SelectedRow()[1]),
+				)
+			}
 		}
 	}
 
@@ -174,6 +191,12 @@ func (m model) View() tea.View {
 			m.progress.View(),
 			lipgloss.NewStyle().Italic(true).Render("Presiona q para cancelar"),
 		)
+	case modeResult:
+		content = fmt.Sprintf(
+			"\n  %s\n\n  %s\n",
+			m.table.View(),
+			m.table.HelpView(),
+		)
 	}
 
 	v := tea.NewView(docStyle.Render(content))
@@ -192,11 +215,42 @@ func NewModel() model {
 	userHome, _ := os.UserHomeDir()
 	fp.CurrentDirectory = userHome
 	pg := progress.New(progress.WithDefaultBlend())
+	columns := []table.Column{
+		{Title: "Rank", Width: 4},
+		{Title: "City", Width: 10},
+		{Title: "Country", Width: 10},
+		{Title: "Population", Width: 10},
+	}
+
+	rows := []table.Row{
+		{"1", "Tokyo", "Japan", "37,274,000"},
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(7),
+		table.WithWidth(42),
+	)
+
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	t.SetStyles(s)
 	return model{
 		mode:       modeList,
 		list:       list,
 		filepicker: fp,
 		progress:   pg,
+		table:      t,
 	}
 }
 
