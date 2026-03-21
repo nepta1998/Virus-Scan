@@ -78,6 +78,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress.SetWidth(msg.Width - h - 4)
 		m.table.SetHeight(msg.Height - v - 10)
 		m.table.SetWidth(msg.Width - h)
+		m.input.SetWidth(msg.Width - h)
 		return m, nil
 	}
 
