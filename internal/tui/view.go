@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -54,14 +55,6 @@ type model struct {
 	spinner      spinner.Model
 	loading      bool
 }
-
-// type clearErrorMsg struct{}
-//
-// func clearErrorAfter(t time.Duration) tea.Cmd {
-// 	return tea.Tick(t, func(_ time.Time) tea.Msg {
-// 		return clearErrorMsg{}
-// 	})
-// }
 
 func (m model) Init() tea.Cmd {
 	return m.filepicker.Init()
@@ -216,10 +209,15 @@ func (m model) loadAnalysisCmd() tea.Cmd {
 		results, _ := analysis.Get("results")
 		if r, ok := results.(map[string]interface{}); ok {
 			for engine, data := range r {
-				resText := "clean"
+				resText := "limpio" // Valor por defecto
 				if d, ok := data.(map[string]interface{}); ok {
-					if v, ok := d["result"]; ok && v != nil {
+					// 1. Intentamos obtener 'result'
+					if v, ok := d["result"]; ok && v != nil && v != "" {
 						resText = fmt.Sprintf("%v", v)
+					} else {
+						if cat, ok := d["category"]; ok && cat != nil {
+							resText = fmt.Sprintf("%v", cat)
+						}
 					}
 				}
 				rows = append(rows, table.Row{engine, resText})
@@ -227,7 +225,8 @@ func (m model) loadAnalysisCmd() tea.Cmd {
 		}
 
 		if len(rows) == 0 {
-			return tableDataMsg([]table.Row{{"INFO", "Esperando motores..."}})
+			time.Sleep(2 * time.Second)
+			// return m.loadAnalysisCmd()()
 		}
 		return tableDataMsg(rows)
 	}
@@ -241,7 +240,6 @@ func (m model) View() tea.View {
 	case modePicker:
 		content = m.filepicker.View()
 	case modeScanning:
-		// Estilizamos el progreso y el mensaje
 		content = fmt.Sprintf(
 			"\n  %s\n\n  %s\n\n  %s",
 			lipgloss.NewStyle().Bold(true).Render(m.status),
@@ -316,6 +314,10 @@ func NewModel() model {
 }
 
 func (m model) NewView() {
+	// f, err := tea.LogToFile("debug.log", "debug")
+	// if err == nil {
+	// 	defer f.Close()
+	// }
 	programInstance := tea.NewProgram(m)
 	go func() {
 		programInstance.Send(setProgramMsg(programInstance))
