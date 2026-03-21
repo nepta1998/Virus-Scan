@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"virusscan/internal/models"
+	"virusscan/internal/service"
 
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/list"
@@ -17,14 +18,12 @@ import (
 
 type setProgramMsg *tea.Program
 
-var (
-	docStyle        = lipgloss.NewStyle().Margin(1, 2)
-	programInstance *tea.Program
-)
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
 type item struct {
 	title, desc string
 }
+type tableDataMsg []table.Row
 
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
@@ -49,6 +48,7 @@ type model struct {
 	p            *tea.Program
 	table        table.Model
 	analysisID   string
+	vtservice    *service.VirusTotalService
 }
 
 // type clearErrorMsg struct{}
@@ -77,6 +77,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 		m.filepicker.SetHeight(msg.Height - v - 4)
 		m.progress.SetWidth(msg.Width - h - 4)
+    m.table.SetHeight(msg.Height - v - 10)
+    m.table.SetWidth(msg.Width - h)
 		return m, nil
 	}
 
@@ -123,9 +125,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = modeScanning
 			m.status = "Subiendo archivo..."
 			// m.mode = modeList
-			return m, ScanFileCmd(file, m.p)
+			return m, ScanFileCmd(file, m.p, m.vtservice)
 		}
 	case modeScanning:
+
 		if key, ok := msg.(tea.KeyPressMsg); ok {
 			switch key.String() {
 			case "ctrl+c":
@@ -155,26 +158,75 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.analysisID = msg.ID
 			m.status = fmt.Sprintf("¡ÉXITO! ID Recibido: %s", msg.ID)
 			m.mode = modeResult
-			return m, nil
+			return m, m.loadAnalysisCmd()
 		}
 	case modeResult:
-		if key, ok := msg.(tea.KeyPressMsg); ok {
-			switch key.String() {
+		switch msg := msg.(type) {
+		case tableDataMsg:
+			m.table.SetRows(msg)
+			m.table.Focus()
+			return m, nil
+
+		case tea.KeyPressMsg:
+			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc", "q":
 				m.mode = modePicker
 				return m, nil
 			case "enter":
-				return m, tea.Batch(
-					tea.Printf("Let's go to %s! %s", m.table.SelectedRow()[1]),
-				)
+				return m, nil
 			}
 		}
+		var tableCmd tea.Cmd
+		m.table, tableCmd = m.table.Update(msg)
+		return m, tableCmd
 	}
 
 	return m, tea.Batch(cmds...)
 }
+
+
+func (m model) loadAnalysisCmd() tea.Cmd {
+	return func() tea.Msg {
+		analysis, err := m.vtservice.GetAnalysis(m.analysisID)
+		if err != nil {
+			return tableDataMsg([]table.Row{{"ERROR", err.Error()}})
+		}
+
+		var rows []table.Row
+		// Intentamos obtener el mapa de resultados
+		results, err := analysis.Get("results")
+		if err != nil {
+			return tableDataMsg([]table.Row{{"ERROR", "No results field"}})
+		}
+
+		// Cambiamos la validación a map[string]any (o interface{})
+		// Si falla, es porque la librería devuelve un tipo específico de la SDK
+		if r, ok := results.(map[string]interface{}); ok {
+			for engine, data := range r {
+				res := "unknown"
+				// Los datos de cada motor suelen ser otro mapa
+				if d, ok := data.(map[string]interface{}); ok {
+					if val, exists := d["result"]; exists && val != nil {
+						res = fmt.Sprintf("%v", val)
+					}
+				}
+				rows = append(rows, table.Row{engine, res})
+			}
+		} else {
+			// Si entra aquí, el tipo de 'results' no es el que esperábamos
+			rows = append(rows, table.Row{"DEBUG", fmt.Sprintf("Tipo: %T", results)})
+		}
+
+		if len(rows) == 0 {
+			rows = append(rows, table.Row{"INFO", "No se encontraron motores"})
+		}
+
+		return tableDataMsg(rows)
+	}
+}
+
 
 func (m model) View() tea.View {
 	var content string
@@ -216,19 +268,12 @@ func NewModel() model {
 	fp.CurrentDirectory = userHome
 	pg := progress.New(progress.WithDefaultBlend())
 	columns := []table.Column{
-		{Title: "Rank", Width: 4},
-		{Title: "City", Width: 10},
-		{Title: "Country", Width: 10},
-		{Title: "Population", Width: 10},
-	}
-
-	rows := []table.Row{
-		{"1", "Tokyo", "Japan", "37,274,000"},
+		{Title: "Engine", Width: 30},
+		{Title: "Result", Width: 15},
 	}
 
 	t := table.New(
 		table.WithColumns(columns),
-		table.WithRows(rows),
 		table.WithFocused(true),
 		table.WithHeight(7),
 		table.WithWidth(42),
@@ -245,12 +290,15 @@ func NewModel() model {
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	t.SetStyles(s)
+	vtservice, _ := service.NewVirusTotalService()
+
 	return model{
 		mode:       modeList,
 		list:       list,
 		filepicker: fp,
 		progress:   pg,
 		table:      t,
+		vtservice:  vtservice,
 	}
 }
 

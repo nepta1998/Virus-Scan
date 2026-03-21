@@ -11,7 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func ScanFileCmd(file *os.File, p *tea.Program) tea.Cmd {
+func ScanFileCmd(file *os.File, p *tea.Program, vtservice *service.VirusTotalService) tea.Cmd {
 	return func() tea.Msg {
 		// 1. Validamos que el programa no sea nil antes de empezar
 		if p == nil {
@@ -23,7 +23,6 @@ func ScanFileCmd(file *os.File, p *tea.Program) tea.Cmd {
 
 		// Goroutine: Escaneo real
 		go func() {
-			vtservice, _ := service.NewVirusTotalService()
 			id, err := vtservice.ScanFile(file, progressChan, nil)
 			resChan <- models.VTResult{ID: id, Err: err}
 		}()
