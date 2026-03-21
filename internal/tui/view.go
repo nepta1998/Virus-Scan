@@ -4,6 +4,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"virusscan/internal/models"
 	"virusscan/internal/service"
@@ -11,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -49,6 +51,8 @@ type model struct {
 	table        table.Model
 	analysisID   string
 	vtservice    *service.VirusTotalService
+	spinner      spinner.Model
+	loading      bool
 }
 
 // type clearErrorMsg struct{}
@@ -77,8 +81,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 		m.filepicker.SetHeight(msg.Height - v - 4)
 		m.progress.SetWidth(msg.Width - h - 4)
-    m.table.SetHeight(msg.Height - v - 10)
-    m.table.SetWidth(msg.Width - h)
+		m.table.SetHeight(msg.Height - v - 10)
+		m.table.SetWidth(msg.Width - h)
 		return m, nil
 	}
 
@@ -158,15 +162,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.analysisID = msg.ID
 			m.status = fmt.Sprintf("¡ÉXITO! ID Recibido: %s", msg.ID)
 			m.mode = modeResult
-			return m, m.loadAnalysisCmd()
+			m.loading = true
+			return m, tea.Batch(m.loadAnalysisCmd(), m.spinner.Tick)
 		}
 	case modeResult:
 		switch msg := msg.(type) {
 		case tableDataMsg:
 			m.table.SetRows(msg)
 			m.table.Focus()
+			m.loading = false
 			return m, nil
-
+		case spinner.TickMsg:
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
 		case tea.KeyPressMsg:
 			switch msg.String() {
 			case "ctrl+c":
@@ -186,47 +195,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-
 func (m model) loadAnalysisCmd() tea.Cmd {
 	return func() tea.Msg {
+		// 1. Pedir el análisis
 		analysis, err := m.vtservice.GetAnalysis(m.analysisID)
 		if err != nil {
 			return tableDataMsg([]table.Row{{"ERROR", err.Error()}})
 		}
 
-		var rows []table.Row
-		// Intentamos obtener el mapa de resultados
-		results, err := analysis.Get("results")
-		if err != nil {
-			return tableDataMsg([]table.Row{{"ERROR", "No results field"}})
+		// 2. Verificar el estado global del análisis
+		status, _ := analysis.Get("status")
+		if status == "queued" || status == "in-progress" {
+			// Si no ha terminado, esperamos 3 segundos y reintentamos
+			time.Sleep(3 * time.Second)
+			return m.loadAnalysisCmd()() // Reintento síncrono dentro del Cmd
 		}
 
-		// Cambiamos la validación a map[string]any (o interface{})
-		// Si falla, es porque la librería devuelve un tipo específico de la SDK
+		// 3. Procesar resultados si ya está "completed"
+		var rows []table.Row
+		results, _ := analysis.Get("results")
 		if r, ok := results.(map[string]interface{}); ok {
 			for engine, data := range r {
-				res := "unknown"
-				// Los datos de cada motor suelen ser otro mapa
+				resText := "clean"
 				if d, ok := data.(map[string]interface{}); ok {
-					if val, exists := d["result"]; exists && val != nil {
-						res = fmt.Sprintf("%v", val)
+					if v, ok := d["result"]; ok && v != nil {
+						resText = fmt.Sprintf("%v", v)
 					}
 				}
-				rows = append(rows, table.Row{engine, res})
+				rows = append(rows, table.Row{engine, resText})
 			}
-		} else {
-			// Si entra aquí, el tipo de 'results' no es el que esperábamos
-			rows = append(rows, table.Row{"DEBUG", fmt.Sprintf("Tipo: %T", results)})
 		}
 
 		if len(rows) == 0 {
-			rows = append(rows, table.Row{"INFO", "No se encontraron motores"})
+			return tableDataMsg([]table.Row{{"INFO", "Esperando motores..."}})
 		}
-
 		return tableDataMsg(rows)
 	}
 }
-
 
 func (m model) View() tea.View {
 	var content string
@@ -244,11 +249,15 @@ func (m model) View() tea.View {
 			lipgloss.NewStyle().Italic(true).Render("Presiona q para cancelar"),
 		)
 	case modeResult:
-		content = fmt.Sprintf(
-			"\n  %s\n\n  %s\n",
-			m.table.View(),
-			m.table.HelpView(),
-		)
+		if m.loading {
+			content = fmt.Sprintf("\n  %s Cargando resultados de VirusTotal...", m.spinner.View())
+		} else {
+			content = fmt.Sprintf(
+				"\n  %s\n\n  %s\n",
+				m.table.View(),
+				m.table.HelpView(),
+			)
+		}
 	}
 
 	v := tea.NewView(docStyle.Render(content))
@@ -291,6 +300,9 @@ func NewModel() model {
 		Bold(false)
 	t.SetStyles(s)
 	vtservice, _ := service.NewVirusTotalService()
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot                                         // Define el tipo de puntos
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205")) // Color rosa
 
 	return model{
 		mode:       modeList,
@@ -299,6 +311,7 @@ func NewModel() model {
 		progress:   pg,
 		table:      t,
 		vtservice:  vtservice,
+		spinner:    sp,
 	}
 }
 
