@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -36,6 +37,7 @@ type mode int
 const (
 	modeList mode = iota
 	modePicker
+	modeInput
 	modeScanning
 	modeResult
 )
@@ -53,6 +55,7 @@ type model struct {
 	vtservice    *service.VirusTotalService
 	spinner      spinner.Model
 	loading      bool
+	input        textinput.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -90,10 +93,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			case "enter":
-				if it, ok := m.list.SelectedItem().(item); ok && it.title == "Scan File" {
-					m.mode = modePicker
-					// Importante: al entrar al picker, pedimos que se inicialice/refresque
-					return m, m.filepicker.Init()
+				it, ok := m.list.SelectedItem().(item)
+				if ok {
+					if it.title == "Scan File" {
+						m.mode = modePicker
+						// Importante: al entrar al picker, pedimos que se inicialice/refresque
+						return m, m.filepicker.Init()
+					}
+					if it.title == "Scan Url" {
+						m.mode = modeInput
+						m.input.Focus()
+						return m, textinput.Blink
+					}
 				}
 			}
 		}
@@ -123,6 +134,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// m.mode = modeList
 			return m, ScanFileCmd(file, m.p, m.vtservice)
 		}
+	case modeInput:
+		var cmdInput tea.Cmd
+		switch msg := msg.(type) {
+		case tea.KeyPressMsg:
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.mode = modeList
+				return m, nil
+			}
+		}
+
+		m.input, cmdInput = m.input.Update(msg)
+		return m, cmdInput
+
 	case modeScanning:
 
 		if key, ok := msg.(tea.KeyPressMsg); ok {
@@ -255,6 +282,13 @@ func (m model) View() tea.View {
 				m.table.HelpView(),
 			)
 		}
+	case modeInput:
+		content = fmt.Sprintf(
+			"\n  %s\n\n  %s\n\n  %s",
+			lipgloss.NewStyle().Bold(true).Render("Introduce la URL para escanear:"),
+			m.input.View(),
+			lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("240")).Render("(Presiona Enter para escanear o Esc para volver)"),
+		)
 	}
 
 	v := tea.NewView(docStyle.Render(content))
@@ -301,6 +335,13 @@ func NewModel() model {
 	sp.Spinner = spinner.Dot                                         // Define el tipo de puntos
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205")) // Color rosa
 
+	ti := textinput.New()
+	ti.Placeholder = "http://example.com"
+	ti.SetVirtualCursor(false)
+	ti.Focus()
+	ti.CharLimit = 156
+	ti.SetWidth(20)
+
 	return model{
 		mode:       modeList,
 		list:       list,
@@ -309,6 +350,7 @@ func NewModel() model {
 		table:      t,
 		vtservice:  vtservice,
 		spinner:    sp,
+		input:      ti,
 	}
 }
 
