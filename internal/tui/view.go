@@ -3,7 +3,6 @@ package tui
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
