@@ -276,7 +276,7 @@ func NewModel() model {
 	pg := progress.New(progress.WithDefaultBlend())
 	columns := []table.Column{
 		{Title: "Engine", Width: 30},
-		{Title: "Result", Width: 15},
+		{Title: "Result", Width: 30},
 	}
 
 	t := table.New(
