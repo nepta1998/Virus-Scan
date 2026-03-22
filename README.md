@@ -1,6 +1,6 @@
 # Virus Scan (Go)
 
-Go project to scan files (and URLs) using the VirusTotal API. It includes a simple service that loads the API key from `.env`, uploads a file for analysis, and fetches the results.
+Go project to scan files (and URLs) using the VirusTotal API. It includes a simple TUI that loads the API key from environment variables, lets you choose what to scan, and fetches the results.
 
 ## Requirements
 
@@ -15,21 +15,15 @@ go mod tidy
 
 ## Configuration
 
-Create a `.env` file at the project root with:
+Set the environment variable before running:
 
-```env
-VIRUSTOTAL_API_KEY=your_api_key_here
+```bash
+export VIRUSTOTAL_API_KEY=your_api_key_here
 ```
 
-> Note: there is also a `FileScanService` that expects `FILESCAN_API_KEY`, but it is a placeholder (not implemented).
+> Note: a `FileScanService` is planned and currently in progress (not yet implemented).
 
 ## Usage
-
-The current example lives in `cmd/main.go` and scans a local file. Update the file path before running:
-
-```go
-file, err := os.Open("/path/to/your/file")
-```
 
 Run the program:
 
@@ -37,28 +31,25 @@ Run the program:
 go run ./cmd
 ```
 
-Upload progress prints to the console and then the analysis is fetched.
+In the TUI, select what you want to scan:
+
+- **Scan file** — pick a local file to upload
+- **Scan URL** — enter a URL to analyze
+
+Progress and results are shown in the interface.
 
 ## Project structure
 
 ```
 .
 ├─ cmd/
-│  └─ main.go            # Example usage of the VirusTotal service
+│  └─ main.go            # TUI entrypoint (scan file or URL)
 ├─ internal/
 │  ├─ models/
 │  │  └─ models.go       # Simple result structures
 │  └─ service/
 │     ├─ virustotal.go   # VirusTotal client implementation
-│     └─ filescan.go     # Placeholder for another service (WIP)
-├─ .env                  # Environment variables (do not commit)
+│     └─ filescan.go     # FileScan service (in progress)
 ├─ go.mod
 └─ go.sum
 ```
-
-## Notes
-
-- This is a basic example. For production, consider:
-  - Better error handling and retries.
-  - Parameterizing the file path via CLI or flags.
-  - Persisting and/or presenting analysis results in a friendly way.
