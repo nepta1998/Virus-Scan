@@ -31,7 +31,7 @@ func ScanFileCmd(file *os.File, p *tea.Program, vtservice *service.VirusTotalSer
 		go func() {
 			for pct := range progressChan {
 				// p ya no es nil porque lo validamos arriba
-				p.Send(models.VTProgress(min(pct, 100)/100))
+				p.Send(models.VTProgress(min(pct, 100) / 100))
 			}
 		}()
 
@@ -40,4 +40,21 @@ func ScanFileCmd(file *os.File, p *tea.Program, vtservice *service.VirusTotalSer
 	}
 }
 
+func ScanURLCmd(url string, p *tea.Program, vtservice *service.VirusTotalService) tea.Cmd {
+	return func() tea.Msg {
+		// 1. Validamos que el programa no sea nil antes de empezar
+		if p == nil {
+			return models.VTResult{Err: fmt.Errorf("program instance is nil")}
+		}
 
+		resChan := make(chan models.VTResult)
+
+		// Goroutine: Escaneo real
+		go func() {
+			id, err := vtservice.ScanURL(url)
+			resChan <- models.VTResult{ID: id, Err: err}
+		}()
+		// El comando principal espera y retorna el RESULTADO FINAL
+		return <-resChan
+	}
+}

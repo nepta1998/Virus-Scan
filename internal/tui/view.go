@@ -145,6 +145,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.mode = modeList
 				return m, nil
+			case "enter":
+				if m.input.Value() != "" {
+					m.mode = modeScanning
+					return m, ScanURLCmd(m.input.Value(), m.p, m.vtservice)
+				}
 			}
 		}
 
@@ -158,7 +163,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc", "q":
-				m.mode = modePicker
+				m.mode = modeList
 				return m, nil
 			}
 		}
@@ -201,7 +206,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc", "q":
-				m.mode = modePicker
+				m.mode = modeList
 				return m, nil
 			case "enter":
 				return m, nil
